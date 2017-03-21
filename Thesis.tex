@@ -8,7 +8,7 @@
 \usepackage{tgbonum}
 
 \setromanfont{Minion Pro}
-\setmonofont[Scale=0.8]{FiraCode-Light}
+\setmonofont[Scale=0.85]{FiraCode-Retina}
 \linespread{1.7}
 
 \title{Working Title}
@@ -37,15 +37,25 @@ The structure of this thesis is as follows. First, the implementation and behavi
 
 A DAG is a directed graph that has a topological ordering, where a sequence of vertices is ordered from start to finish from within the sequence. DAGs have useful applications in numerous contexts, but this thesis will focus on applications in scheduling. The metaphor used throughout this thesis is that of \emph{Tasks}, \emph{TaskQueues}, and \emph{Virtual Machines}, with network latencies, represented as integer costs between tasks. Tasks are vertices that have dependencies (upstream vertices) and dependents (downstream vertices). Dependents/Dependencies of a task can be accessed through a \texttt{Map<Task, Integer>}, where \texttt{Task} is the destination node and \texttt{Integer} represents the network cost of the edge. We implemented several algorithms which schedule graphs according to different constraints.
 
+There are two main types of schedulers: bounded and unbounded schedulers. Bounded schedulers are bounded by the operator as to how many queues the operator wants. Unbounded schedulers, like the name implies, are not bounded by this constraint. Bounded schedulers have this function signature: \texttt{def generateSchedule(numQueues: Int, machineType: MachineType): List[TaskQueue]}. Unbounded schedulers have the following signature: \texttt{def generateSchedule(numQueues: Int, graph: List[Task], machineType: MachineType): List[TaskQueue]}; differing in the presence of an additional parameter, \texttt{numQueues: Int}.
+
 \subsection{Edge Zero}
+
+The Edge Zero algorithm is an unbounded scheduler, in that there is no bound on the number of virtual machines it will generate as part of the scheduling process. The algorithm works by initially placing each task onto a Virtual Machine. The algorithm then iterates through the the one-to-one mapping of virtual machines, combining machines whenever two tasks can be colocated, hence ``zeroing'' the edges. Each queue is then topologically sorted.
+
 \subsection{Linear Cluster}
 First, split the graph into two groups: nodes with neighbors and without. The ones without neighbors are shuffled onto their own task queue. Those can be built without worry. That leaves us with the rest. Of the rest (the dependent nodes) need to scheduled. To do that, we will find the longest path between a source and leaf node. To accomplish this, we will use a BFS (with negative weights determine the ``shortest'' path). On each iteration of the BFS, we'll pass a set of visited nodes. We stop iteration when the set of visited nodes equals the size of the dependent nodes.
+
 \subsection{Round Robin}
+We treated Round Robin as a baseline, where a graph of an arbitrary size will be distributed evenly on across a set of queues.
+
 \subsection{CCA}
 \subsection{Birkhoff}
 \subsection{Dynamic Critical Path}
 
 \section{Results}
+
+TBA; need further analysis of graphs.
 
 \section{Conclusion}
 
