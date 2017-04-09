@@ -1,0 +1,11 @@
+cholskeysample.ps filter=lfs diff=lfs merge=lfs -text
+dag.ps filter=lfs diff=lfs merge=lfs -text
+fibonaccisample.ps filter=lfs diff=lfs merge=lfs -text
+forkjoinsample.ps filter=lfs diff=lfs merge=lfs -text
+Poisson2Dsample.ps filter=lfs diff=lfs merge=lfs -text
+sparselusample.ps filter=lfs diff=lfs merge=lfs -text
+images/cholesky.png filter=lfs diff=lfs merge=lfs -text
+images/erdos.png filter=lfs diff=lfs merge=lfs -text
+images/fork.png filter=lfs diff=lfs merge=lfs -text
+images/poisson.png filter=lfs diff=lfs merge=lfs -text
+images/sparcelu.png filter=lfs diff=lfs merge=lfs -text
