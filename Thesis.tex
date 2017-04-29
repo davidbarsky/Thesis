@@ -15,10 +15,15 @@
 \setmonofont[Scale=0.75]{InputSansNarrow Light}
 \setmathrm{Minion Pro}
 \setmathfont(Digits,Latin){Minion Pro}
+\usepackage[format=plain,
+            font=it]{caption}
+            
+\def\code#1{\texttt{#1}}
 
-\linespread{1.7}
+\linespread{1.2}
 
-\title{Working Title}
+\title{Sirens: Benchmarking Job Scheduling Heuristics in Networked Environments}
+\author{David Barsky, Ryan Marcus, Olga Papaemmanouil}
 \date{}
 
 \begin{document}
@@ -26,26 +31,27 @@
 
 \begin{abstract}
 
-Scheduling a program onto a multi-worker system to minimize cost is a common problem in performance-sensitive contexts. These contexts include any sort of work that can be parallelizable. These problems are often represented in the form of a \emph{Directed Acyclic Graph}. A common task, in both academia and industry, is finding an optimal schedule for a set of given constraints, such as total minimizing execution time. Unfortunately, this problem is also NP-complete. Therefore, users have turned to heuristics, which algorithms that solve problems more quickly when classical solutions by trading optimality, completeness, or accuracy. This trade-off is necessary to make the problem computable in this first place. In this thesis, we implement and profile several scheduling algorithms, report on their performance, and propose new heuristic and reference implementation.
+Scheduling a program onto a multi-worker system to minimize cost is a common problem in performance-sensitive contexts. These contexts include any sort of work that can be parallelizable. These problems are often represented in the form of a Directed Acyclic Graph. A common task, in both academia and industry, is finding an optimal schedule for a set of given constraints, such as total minimizing execution time. Unfortunately, this problem is also NP-complete. Therefore, users have turned to heuristics, which algorithms that solve problems more quickly when classical solutions by trading optimality, completeness, or accuracy. This trade-off is necessary to make the problem computable in this first place. In this thesis, we implement and profile several scheduling algorithms, report on their performance, and propose new heuristic and reference implementation.
 
 \end{abstract}
 
 \section{Introduction}
 
-Graphs are remarkably useful data structures, capable of representing networks and relationships between entities. They consist of nodes and edges, where \emph{nodes} are arbitrary entities that are connected by \emph{edges}. Formally, graphs are a set of vertices $V$ and a set of edges $E$. We can therefore define a graph as $G = (V, E)$. Directed acyclic graphs (DAGs) are a subtype of graphs. They have two critical distinctions from regular graphs. First, edges connecting nodes have direction, meaning that there is a clear before and after for any given edge. Each edge $e$ in $E$ is an ordered pair of $(u, v)$ , where $u, v$ are in V. Second, the acyclic property ensures that there is a consistent, ordered sequence such that it is impossible to start with a node $a$ and end back at node $a$. The ``ordered sequence is alternatively known as a topological order. Therefore, there exists a total ordering of its nodes such that for every directed edge $(a, b)$ in $V$, $a$ comes before $b$ in the ordering. Second, the term ``acyclic'' means that there is no path from any vertex $v$ in $V$ to itself. These properties imply that any directed acyclic graph has a clear, traversable order from start to end.
+Graphs are remarkably useful data structures, capable of representing networks and relationships between entities. They consist of nodes and edges, where nodes are arbitrary entities that are connected by edges. Formally, graphs are a set of vertices $V$ and a set of edges $E$. We can therefore define a graph as $G = (V, E)$. Directed acyclic graphs (DAGs) are a subtype of graphs. They have two critical distinctions from regular graphs. First, edges connecting nodes have direction, meaning that there is a clear before and after for any given edge. Each edge $e$ in $E$ is an ordered pair of $(u, v)$ , where $u, v$ are in V. Second, the acyclic property ensures that there is a consistent, ordered sequence such that it is impossible to start with a node $a$ and end back at node $a$. The ``ordered sequence is alternatively known as a topological order. Therefore, there exists a total ordering of its nodes such that for every directed edge $(a, b)$ in $V$, $a$ comes before $b$ in the ordering. Second, the term ``acyclic'' means that there is no path from any vertex $v$ in $V$ to itself. These properties imply that any directed acyclic graph has a clear, traversable order from start to end.
 
-Our research interest in directed acyclic graphs lies in their application in task scheduling.  Task scheduling, generally speaking, is a procedure for allocating work to resources that can complete that work. A scheduler is the component that handles the scheduling activity. Here, a directed acyclic graph would be called a \emph{job}, nodes would be called \emph{tasks}, and edges \emph{communication costs} or \emph{latency}. Historically, most research into task scheduling was focused on multiprocessor systems, where communication costs between tasks is is minimal. With the advent of cloud computing---a model of computing that allows users to rent resources by the hour as opposed to making a large, upfront capital investment---and ``big data''---data sets and applications that are too large to reasonably maintain on one computer---users have begun to distribute their workloads across clusters of many machines. Apache Spark, an open-source cluster-computing framework, is perhaps the most famous example of this computing model. 
+Our research interest in directed acyclic graphs lies in their application to task scheduling.  Task scheduling, generally speaking, is a procedure for allocating work to resources that can complete that work. A scheduler is the component that handles the scheduling activity. Here, a directed acyclic graph would be called a job, nodes tasks, and edges communication costs (or latency). Historically, most research into task scheduling was focused on multiprocessor systems, where communication costs between tasks is is minimal. With the advent of cloud computing (a model of computing that allows users to rent resources by the hour as opposed to making a large, upfront capital investment) and big data (data sets and applications that are too large to reasonably maintain on one computer) users have begun to distribute their workloads across clusters of many machines. Apache Spark, an open-source cluster-computing framework, is perhaps the most famous example of this computing model \cite{spark}. Underneath the hood, Spark uses directed acyclic graphs in order to determine an optimal  schedule for a job that a user submitted. Common workflows with Spark include batch processing of large data volumes for information retrieval from unstructured data \cite{spark-fb}. Prior to running a job, Apache Spark must first schedule a job onto a cluster of machines. Tasks that compose a job should be scheduled optimally as to reduce the user's total operating expense. This work's goal is to determine which heuristics under which circumstances would generate a schedule that minimizes total operating cost.
 
-Our interest lies in the domain of cluster computing. Cluster computing, even in cloud environments, is challenging from both financial and engineering perspectives. While throwing machines at a given job may fix the immediate problem, resource utilization can be costly in terms of both time and cost. At large scales, small inefficiencies tend to have an outsized effect. Therefore, it makes sense for users to find an optimal job schedule ahead of time. Unfortunately, we---the field as a whole---are not aware of techniques that allow for finding an optimal schedule in polynomial time. That is, the difficultly of finding an optimal schedule scales to intractable degrees on sizable inputs.
+Our interest lies in the domain of cluster computing. Cluster computing, even in cloud environments, is challenging from both financial and engineering perspectives. While throwing machines at a given job may fix the immediate problem, resource utilization can be costly in terms of both time and money. At large scales, small inefficiencies tend to have an outsized effect. Therefore, it makes sense for users to find an optimal job schedule ahead of time. Unfortunately, we---the field as a whole---are not aware of techniques that allow for finding an optimal schedule in polynomial time. That is, the difficultly of finding an optimal schedule scales to intractable degrees on sizable inputs.
 
-In this model, our primary concerns are maintaining parallelism, minimizing cost, and reducing network communication costs. We consider cost to the the complete time spend utilizing computing resources. Network communication, therefore, is idle unused time. Our goal is to minimize unnecessary network communication costs. We have implemented several heuristics and profiled them across a range of graphs, both synthetic and real. The synthetic graphs were from a tool known as GGen, a random graph generator designed for scheduling simulations. The real sample workloads were taken from sample Apache Spark workflows.
+In this model, our primary concerns are maintaining parallelism, minimizing cost, and reducing network communication costs. We consider cost to the the complete time spend utilizing computing resources. Network communication, therefore, is idle unused time. Our goal is to minimize unnecessary network communication costs. We have implemented several heuristics and profiled them across a range of synthetic graphs. The synthetic graphs were from a tool known as \code{GGen}, a random graph generator designed for scheduling simulations \cite{ggen}.
 
 \section{Scheduling Algorithms}
 
 \subsection{Implementation Notes}
 
-We will provide a single running example through this section. Namely, a synthetic graph named an Erdos GMN graph, which is named after the Erdos-Renyi model of generating random graphs. GGen offers two types of Erdos graph generation, differing in approach to edge generation. One method (Erdos GNP) asks the user to the number of vertices they want in the graph and probability $p$ (between 0 and 1) that an edge will appear on a given vertex. The other method, Erdos GNM, asks the user to provide the total number of vertexes and edges that will be present in the graph. We chose the latter option, as it gave us the greatest degree of control over graph generation. Here is an example of a Erdos GNM graph with 20 vertices and 15 edges:
+We will provide a single running example through this section, represented by a single graph. The graph, within our software, is known as an Erdos GNM graph. It is named after the Erdos-Renyi model of generating random graphs\cite{erdos}. Our directed acyclic graph generation software offered two approaches for generating the Erdos graphs. The first method required the user to provide $a$ and $b$, where $a$ represents the number of vertices and $b$ represents the number of edges. The second method asked the user to provide $a$ and $b$, where $a$ remains unchanged while $b$ is the probability between ($0$ and $1$) that a given vertex will have an edge connecting it to another vertex \cite{ggen}. We chose the latter option, as it gave us the greatest degree of control over graph generation. Figure 1 represents an Erdos GNM graph with 20 vertices and 15 edges.
 
+\begin{figure}
 \digraph[scale=0.5]{dag}{
 	0;
 	1;
@@ -67,36 +73,28 @@ We will provide a single running example through this section. Namely, a synthet
 	17 -> 18;
 	18 -> 19;
 }
+\ref{erdos}
+\center
+\caption{An Erdos GNM graph of twenty nodes.}
+\end{figure}
 
-These experiments were run on a 2014 MacBook Pro with 2.5Ghz i7 processor, with 16 GB of DDR3 memory. The experiments themselves are a Java test target which allows for simple reproduction and verification.
+The experiments were run on a 2014 MacBook Pro with 2.5Ghz i7 processor, with 16 GB of DDR3 memory. The  code for the experiments were written in Scala and Java and are accessible at a public GitHub repository \cite{code}. The experiments live under the \code{src/test/java/slow/sirens/experiments/} directory, which allows for ease of reproducibility.
 
-Many of the algorithms we implement below are concerned with the critical path of a graph. Critical paths are paths in a directed acyclic graph that go from a source vertex (a node that has no parents) to a leaf node (a node that has no children). They are often the longest path in a graph and therefore represent the minimum amount of time that any schedule could take. In the graph above, the vertices $(4, 12, 18, 19)$ represent a critical path. Additional critical paths include $(5, 15)$, $(10, 15)$, and $(6, 7, 9)$.
+Some of the algorithms we implement are concerned with the critical path of a graph. Critical paths are paths in a directed acyclic graph that go from a source vertex (a node that has no parents) to a leaf node (a node that has no children). They are often the longest path in a graph and therefore represent the minimum amount of time that any schedule could take. In Figure 1, the vertices $(4, 12, 18, 19)$ represent a critical path. Additional critical paths include $(5, 15)$, $(10, 15)$, and $(6, 7, 9)$.
 
-Our system employs domain specific terminology which is similar to the formal definition of directed acyclic graph provided in the introduction. We consider a whole graph to be an \emph{job} and nodes \emph{tasks}. Tasks are scheduled onto \emph{task queues}, which are machines that process tasks. Edges represent communication costs between tasks, while tasks maintain their own execution cost.
+Our system employs a domain specific terminology which is similar to the formal definition of a directed acyclic graph provided in the introduction. We consider a whole graph to be a job and nodes tasks. Tasks are scheduled onto task queues, which are machines that process tasks. Edges represent network communication costs between tasks, while tasks have a notion of execution cost which we refer to as latency. Our primary assumption is that edge weight (or in our model, communication times between vertices) is either equal to or dominant to that of vertex cost.
+
+We examined two main types of schedulers: bounded and unbounded. Bounded schedulers are bounded by the number of task queues that they will generate in a schedule. Unbounded schedulers, in contrast, have no bound. Linear Cluster and Edge Zero are unbounded schedulers and Round Robin is a bounded scheduler. In the following examples, Edge Zero, Linear Cluster, Round Robin, and Dynamic Critical path operate upon Erdos GNM graphs that vary in size from 220 to 1540 vertices. However, the number of edges remains constant at 100 while the number of vertices increases. Many of the following experiments make references to ``cost'', which is a abstract monetary measure derived from Amazon Web Services' pricing.
 
 \subsection{Edge Zero}
 
-The Edge Zero, or edge-zeroing algorithm selects clusters for merging based on network latency (edges). Its goal is to minimize network latency, so it is most effective on graphs that have high network costs. At each step, the algorithm finds the edge with the largest weight. The two clusters incident by the edge will be merged if the merging (thereby zeroing the largest weight) does not increase the completion time. After two clusters are merged, the ordering of nodes in the resulting cluster is based on the static b-levels of the nodes. The static b-levels of a task is the latest possible start time of a given task.
+The Edge Zero, or ``edge-zeroing'' algorithm selects clusters for merging based on network latency (edges) \cite{lit-review}\cite{edge-zero}. Its goal is to minimize network latency, so it is most effective on graphs that have high network costs. At each step, the algorithm finds the edge with the largest weight. The two clusters incident by the edge will be merged if the merging (thereby zeroing the largest weight) does not increase the completion time. After two clusters are merged, the ordering of nodes in the resulting cluster is based on the static b-levels of the nodes. The static b-levels of a task is the latest possible start time of a given task.
 
-The edge zero algorithm is an unbounded scheduler, in that there is no bound on the number of virtual machines it will generate as part of the scheduling process. The algorithm works by initially placing each task onto a task queue. The algorithm then iterates through the scheduled, combining machines whenever two tasks can be colocated. At each step, a new schedule is generated hence ``zeroing'' the edges. Each queue is then topologically sorted.
-
-\begin{center}
-\begin{tabular}{| l | c |}
-  \hline
-  Vertices & Cost \\ \hline
-  220 & 9705 \\
-  364 & 10409 \\
-  560 & 12802 \\
-  816 & 17867 \\
-  1140 & 23354 \\
-  1540 & 31603 \\
-  \hline			
-\end{tabular}
-\end{center}
+The algorithm works by initially placing each task onto a task queue. The algorithm then iterates through the scheduled, combining machines whenever two tasks can be colocated (hence ``zeroing'' the edges). At each step, a new schedule is generated. Each queue is then topologically sorted. 
 
 \subsection{Linear Cluster}
 
-The Linear Clustering algorithm merges nodes to form a single cluster based on the critical path. The algorithm first determines the set of tasks constituting the critical, then schedules all the critical path tasks to a single task queue at once. These tasks and all edges incident on them are then removed from the graph. The process repeats until all task are scheduled. Formally:
+The Linear Clustering algorithm merges nodes to form a single cluster based on the critical path \cite{lit-review}\cite{linear-cluster}. The algorithm first determines the set of tasks constituting the critical, then schedules all the critical path tasks to a single task queue at once. These tasks and all edges incident on them are then removed from the graph. The process repeats until all task are scheduled. Formally:
 
 \begin{enumerate}
 \item Initially, mark all tasks as unexamined.
@@ -108,82 +106,153 @@ nodes in the cluster as examined.
 
 This process continues until all tasks in the job are examined.
 
-Here are the results of the experiment, across six different graph sizes:
-
-\begin{center}
-\begin{tabular}{| l | c |}
-  \hline
-  Vertices & Cost \\ \hline
-  220 & 9509 \\
-  364 & 12324 \\
-  560 & 16667 \\
-  816 & 21531 \\
-  1140 & 28669 \\
-  1540 & 35580 \\
-  \hline
-\end{tabular}
-\end{center}
-
 \subsection{Round Robin}
 
-The Round Robin algorithm is one of the simplest algorithms we implemented. It goes through the entire graph, and schedules tasks one-by-one onto a set of task queues, whose size $n$ is determined by the user. It allocate all tasks evenly onto task queues. The graph is iterated over in topological order, such that every task is scheduled onto a task queue modulo its position in the linearized graph.
+The Round Robin algorithm is the simplest algorithms we implemented. It iterates through the graph, and schedules tasks one-by-one onto a set of task queues, whose size $n$ is determined by the user. Since Round Robin is a bounded scheduler, the number of task queues that will be used is user-specified and therefore deterministic. The graph is iterated over in topological order, such that every task is scheduled onto a task queue modulo its position in the linearized graph.
 
-\begin{center}
+Figure 5 represents the output of Round Robin operating on Erdos GNM graphs of various sizes, with the number of queues set to 4. The final cost of a schedule generate by Round Robin at a graph size of 1540 vertices is far higher than that of both Edge Zero and Linear Cluster.
+
+\subsection{Dynamic Critical Path}
+
+Dynamic Critical Path is a static scheduling algorithm is a more involved and complex algorithm than the others. The Dynamic Critical Path heuristic examines a node $n$ for scheduling if $n$ has the smallest difference between its Absolute Latest Start time (ALST) and Absolute Earliest Start Time (AEST) of all candidate nodes. The difference between ALST and AEST is considered to be the node's relative mobility \cite{dcp}\cite{lit-review}.
+
+Compared to the other scheduling algorithms implemented, Dynamic Critical Path takes much longer to generate a schedule. At times, the schedule generation takes longer than the job to execute. Figure 2 and 3 demonstrate Dynamic Critical Path's time complexity.
+
+\begin{figure}[t]
+\includegraphics[scale=0.5]{time}
+\centering
+\caption{This chart represents the time elapsed, set to a $\log_{10}$ scale, of several heuristics (Edge Zero, Linear Cluster, Dynamic Critical Path, and Round Robin) on an Erdos GNM graph.}
+\end{figure}
+
+\begin{figure}
 \begin{tabular}{| l | c |}
   \hline
-  Vertices & Cost \\ \hline
-  220 & 16516 \\
-  364 & 21406 \\
-  560 & 17643 \\
-  816 & 15870 \\
-  1140 & 24180 \\
-  1540 & 12134 \\
+  Scheduler & Time (ms) \\ \hline
+  Dynamic Critical Path & 4200 \\
+  Edge Zero & 29 \\
+  Linear Cluster & 30 \\
+  Round Robin & 28 \\
   \hline			
 \end{tabular}
-\end{center}
-
-For an Erdos graph of 220 tasks, round robin generated a schedule of 4 (provided by the user) task queues and a final cost of 14313 (we do no have a unit, it is an arbitrary cost). At 560 tasks, round robin generated a schedule with 4 task queues and a final cost of 15546. This algorithm has a higher initial cost, but is able to scale gracefully as the number of tasks increases.
-
-\subsection{CCA}
-\subsection{Birkhoff}
-\subsection{Dynamic Critical Path}
+\centering
+\caption{This figure represents the average time, in milliseconds, that each scheduler takes to generate a schedule from an Erdos GNM graph of 100 vertices and 100 edges. Each figure is the average of 20 iterations.}
+\end{figure}
 
 \section{Results}
 
-In our experiments, we used several different synthetic graph types: Cholskey, ErdosGNM, Fibonacci, Fork/Join, Poisson2D, and SparceLU. In order:
+In our experiments, we used several different synthetic graph types: Cholskey, ErdosGNM, Fibonacci, Fork/Join, Poisson2D, and SparceLU. We will discuss them in order.
 
-Cholskey graphs use the Cholesky decomposition of a Hermitian, positive-definite matrix into the product of a lower triangular matrix and its conjugate transpose. It takes a single parameter, $n$, which represents the size of the matrix to be decomposed in block. A sample Cholskey graph can be seen in \S 6.1. Across all graph sizes tested (varying between 220 vertices to 1540 vertices), the dynamic critical path has outperformed all other tested heuristics by a large margin. However, dynamic critical path takes significantly more time to run than the alternative. Of the two other heuristics---edge zero and linear cluster---edge zero outperforms linear cluster, with the difference between the two only increasing as the number of vertices in graph increases.
-	
+\subsection{Cholesky}
+
+Cholskey graphs use the Cholesky decomposition of a Hermitian, positive-definite matrix into the product of a lower triangular matrix and its conjugate transpose. It takes a single parameter, $n$, which represents the size of the matrix to be decomposed in block. A sample Cholskey graph can be seen in figure 9. Across all graph sizes tested (varying between 220 vertices to 1540 vertices), the Dynamic Critical Path has outperformed all other tested heuristics by a large margin. However, Dynamic Critical Path takes significantly more time to run than the alternatives. Edge Zero dramatically outperforms Linear Cluster, with the difference between the two only increasing as the number of vertices in graph increases. A Round Robin scheduler is the second most-performant scheduler of the ones tested. Results can be seen in Figure 4.
+
+\begin{figure}[t]	
 \includegraphics[scale=0.5]{cholesky}
-	
-Fibonacci graphs take the shape of a fractal fibonacci sequence, with vertices branching inward from many source vertices into a single leaf vertex, opposite of the pattern seen in the other graph graphs. A sample Fibonacci graph can be seen in \S 6.2.
-	
-Fork/Join graphs are symmetrical graphs that exhibit a vertically symmetrical, fan-in/fan-out pattern. A sample fork/join graph can be see in \S 6.3. On fork/join graphs ranging in sizes of 35 to 120 vertices, Linear Cluster outperformed Edge Zero, in a reversal of the Cholskey experiments. This is likely due to the relatively paucity (and therefore, outsized importance) of critical paths, which the linear cluster is designed to exploit.
-	
-\includegraphics[scale=0.5]{fork}
-	
-A Poisson2D graph, as seen in \S 6.4, is layered, rectangular, and vertically symmetrical. Dynamic Critical Path, like in the Cholskey experiments, outperformed the other heuristics. However, the differences between Edge Zero and Linear Cluster were less dramatic than in previous experiments. Linear Cluster, on larger graphs, outperformed Edge Zero.
+\centering
+\caption{This chart represents the performance of several heuristics (Edge Zero, Linear Cluster, Dynamic Critical Path, and Round Robin) on a Cholesky graph. Lower is better.}
+\end{figure}
 
+\subsection{Fork/Join}
+	
+Fork/Join graphs are symmetrical graphs that exhibit a vertically symmetrical, fan-in/fan-out pattern. A sample fork/join graph, which can be seen in figure 10. On fork/join graphs ranging in sizes of 35 to 120 vertices, Linear Cluster outperformed Edge Zero, in a reversal of the Cholskey experiments. This is likely due to the relatively paucity (and therefore, outsized importance) of critical paths, which the Linear Cluster algorithm is designed to exploit. The Round Robin scheduler performed worst, with Edge Zero in the middle. Results can be seen in Figure 5.
+
+\begin{figure}[t]
+\includegraphics[scale=0.5]{forkjoin}
+\centering
+\caption{This chart represents the performance of several heuristics (Edge Zero, Linear Cluster, and Round Robin) on a Fork/Join graph. Lower is better.}
+\end{figure}
+
+\subsection{Poisson 2D}
+
+A Poisson2D graph, as seen in figure 11, is layered, rectangular, and vertically symmetrical. The Dynamic Critical Path scheduler, like in the Cholskey experiments, outperformed the other heuristics. However, the differences between Edge Zero and Linear Cluster were muted when compared to prior experiments. Linear Cluster, on larger graphs, outperformed Edge Zero, while Edge Zero slightly outperformed Round Robin. Results can be seen in Figure 6.
+
+\begin{figure}[t]
 \includegraphics[scale=0.5]{poisson}
-	
-A SparceLU graph, as seen in \S 6.5, does not have any sort of characteristic, distinguishing shape. It is generated through a LU decomposition over a sparse matrix. As in previous experiments, dynamic critical path has outperformed edge zero and linear cluster. Edge zero outperformed linear cluster to a startling degree.
+\centering
+\caption{This chart represents the performance of several heuristics (Edge Zero, Linear Cluster, Dynamic Critical Path, and Round Robin) on a Poisson 2D graph. Lower is better.}
+\end{figure}
 
-\includegraphics[scale=0.5]{sparcelu}
+\subsection{Sparse LU}
 	
-An Erdos GNM graph uses the Erdos-Renyi model of generating random graphs, which was discussed in \S 2.1. Performance of edge zero and linear cluster was comparable, with no clear winner.
+A Sparse LU graph, as seen in figure 12, does not have any sort of characteristic, distinguishing shape. It is generated through a LU decomposition over a sparse matrix\cite{ludecomp}. As in previous experiments, dynamic critical path has outperformed edge zero and linear cluster. Edge zero outperformed linear cluster to a startling degree. Results can be seen in Figure 7.
 
+\begin{figure}[t]
+\includegraphics[scale=0.5]{sparselu}
+\centering
+\caption{This chart represents the performance of several heuristics (Edge Zero, Linear Cluster, Dynamic Critical Path, and Round Robin) on a Sparse LU graph. Lower is better.}
+\end{figure}
+
+\subsection{Erdos GNM}
+	
+An Erdos GNM graph uses the Erdos-Renyi model of generating random graphs, which was discussed in figure 13. Differences in performance between Edge Zero, Linear Cluster, and Round Robin was minimal. Results can be seen in Figure 8.
+
+\begin{figure}[t]
 \includegraphics[scale=0.5]{erdos}
-
+\centering
+\caption{This chart represents the performance of several heuristics (Edge Zero, Linear Cluster, Dynamic Critical Path, and Round Robin) on an Erdos GNM graph. Lower is better.}
+\end{figure}
 
 \section{Conclusion}
 
-\section{Related Work}
+When considering which scheduling heuristic to employ, there is no single hard-and-fast rule. A solid recommendation will depend entirely on the constraints at hand. During our experimentation, we've seen a great deal of variation between graph types and heuristics, and several consistent patterns that we feel comfortable drawing conclusions from.
 
+The various scheduling algorithms have different runtime complexities that roughly correspond to the optimality (optimality being a cost that is low as possible). Both the Linear Cluster and Edge Zero algorithm operate in $O(v(e + v))$, where $v$ is the number of vertices in the graph and $e$ is the number of edges in the graph \cite{lit-review}\cite{edge-zero}\cite{linear-cluster}. The Round Robin algorithm operates in $O(n)$. The Dynamic Critical Path Algorithm operates at $O(v^3)$, where $v$ is the number of vertices present in the graph \cite{lit-review}\cite{dcp}. In practice, the Dynamic Critical Path algorithm maximized CPU usage and took nearly an hour to run on a graph of four hundred vertices. In contrast, other scheduling heuristics were able to determine a schedule under 300 milliseconds for comparably-sized graphs.
+
+This reveals one dimension of analysis: time. If running-time is not a constraint, then the Dynamic Critical Path heuristic is by far the best we've tested, across all different graph types. However, if time is a constraint, then recommendations along graph shape are most valuable. The other scheduling heuristics's runtime complexity performance that was broadly similar to one another, generating a schedule on a graph of 400 vertices in under 300ms. Here, the performance of the graphs differed depending on the properties of the graph itself. For graphs that have fewer critical paths, like the Fork-Join graph, the Linear Cluster heuristic was the most effective. With a graph size of 113 vertices, Linear Cluster outperformed Edge Zero by a factor of five, and Round Robin by a factor of ten (Figure 6). However, on graphs that tended to have many critical paths, Linear Cluster became the worst-performing heuristic (figure 5, figure 8). On denser graphs that sat in the middle of the extremes of few and many critical paths (Poisson2D; Erdos) variation between heuristics was minor.
+
+Therefore, for most graphs, ease of implementation tends to win out. On graphs with few critical paths, Linear Cluster is an excellent choice, but on graphs with many, Linear Cluster is not. The Dynamic Critical Path algorithm consistently generates the most optimal schedules, albeit at the cost of high runtime.
+
+\section{Related Work \& Acknowledgements}
+
+\begin{itemize}
+\item The field of task scheduling is a well-studied one. We made extensive use of Yu-Kwong Kwok and Ishfaq Ahmad's literature review and recommend their work for a clear and useful explanation of directed acyclic graphs and related algorithms \cite{lit-review}. Vivek Sarkar's work on the Edge Zero \cite{edge-zero} algorithm, S.J. Kim and J.C. Browne's work on the Linear Cluster algorithm, and Yu-Kwong Kwok and Ishfaq Ahmad's work on the Dynamic Critical Path algorithm were invaluable for this research.
+
+Olga Papaemmanuil and Ryan Marcus's patience and guidance on this project has been invaluable.
+
+\end{itemize}
+
+\newpage
+\begin{thebibliography}{}
+
+\bibitem{spark}
+Matei Zaharia, Mosharaf Chowdhury, Michael J. Franklin, Scott Shenker, Ion Stoica. ``Spark: Cluster Computing with Working Sets''. HotCloud 2010. June 2010. dl.acm.org/citation.cfm?id=1863103.1863113
+
+\bibitem{spark-fb}
+Sital Kedia, Shuojie Wang, Avery Ching  ``Apache Spark @Scale: A 60 TB+ production use case''. Facebook Engineering Blog. August 2016. code.facebook.com/posts/1671373793181703
+
+\bibitem{ggen}
+Daniel Cordeiro, Gregory Mounie, Swann Perarnau, Denis Trystram, Jean-Marc Vincent, and Frederic Wagner. ``Random graph generation for scheduling simulations''. In International ICST Conference on Simulation Tools and Techniques (SIMUTools), 2010. ggen.ligforge.imag.fr/
+
+\bibitem{erdos}
+Paul Erdos and Alfred Renyi. "On random graphs, I." Publicationes Mathematicae (Debrecen) 6 (1959): 290-297.
+
+\bibitem{lit-review}
+Yu-Kwong Kwok and Ishfaq Ahmad. ``Static Scheduling Algorithms for Allocating Directed Task Graphs to Multiprocessors''. ACM Computer Survey, Dec. 1999. dl.acm.org/citation.cfm?id=344618
+
+\bibitem{linear-cluster}
+S.J. Kim and J.C. Browne. ``A General Approach to Mapping of Parallel Computation upon Multiprocessor Architectures''. Proceedings of International Conference on Parallel Processing, vol. II, Aug. 1988, pp. 1-8.
+
+\bibitem{jmh}
+Oracle. Java Microbenchmarking Harness. openjdk.java.net/projects/code-tools/jmh/
+
+\bibitem{edge-zero}
+Vivek Sarkar. ``Partitioning and Scheduling Parallel Programs for Multiprocessors''. MIT Press, Cambridge, MA, 1989.
+
+\bibitem{dcp}
+Yu-Kwong Kwok, Ishfaq Ahmad. ``Dynamic Critical-Path Scheduling: An Effective Technique for Allocating Task Graphs to Multiprocessors''. IEEE Trans. Parallel Distributed Systems, May 1996. dl.acm.org/citation.cfm?id=232007
+
+\bibitem{ludecomp}
+Wikipedia. ``LU Decompsition''. en.wikipedia.org/wiki/LU\_decomposition
+
+\bibitem{code}
+David Barsky, Ryan Marcus, Olga Papaemmanouil. ``Sirens: Quantitative Analysis of Task Scheduling Heuristics''. 2017. github.com/davidbarsky/sirens
+
+\end{thebibliography}{}
+
+\newpage
 \section{Figures}
 
-\subsection{Cholskey Graph}
-\vspace{20pt}
-
+\begin{figure}
 \digraph[scale=0.5]{cholskeysample}{
 	0	 [kernel=potrf];
 	1	 [kernel=trsm];
@@ -266,10 +335,11 @@ An Erdos GNM graph uses the Erdos-Renyi model of generating random graphs, which
 	18 -> 19	 [x=3,
 		y=3];
 }
+\centering
+\caption{A Cholesky graph with 20 vertices.}
+\end{figure}
 
-\subsection{Fibonacci Graph}
-\vspace{20pt}
-
+\begin{figure}
 \digraph[scale=0.5]{fibonaccisample}{
 
 	0	 [n=5];
@@ -302,12 +372,12 @@ An Erdos GNM graph uses the Erdos-Renyi model of generating random graphs, which
 	14	 [n=0];
 	14 -> 11;
 }
+\centering
+\caption{A Fibonacci graph with 15 vertices.}
+\end{figure}
 
-\subsection{Fork/Join Graph}
-\vspace{20pt}
-
+\begin{figure}
 \digraph[scale=0.5]{forkjoinsample} {
-
 	0 -> 1;
 	0 -> 2;
 	0 -> 3;
@@ -339,10 +409,11 @@ An Erdos GNM graph uses the Erdos-Renyi model of generating random graphs, which
 	18 -> 20;
 	19 -> 20;
 }
+\centering
+\caption{A Fork/Join graph with 21 vertices.}
+\end{figure}
 
-\subsection{Poisson2D Graph}
-\vspace{20pt}
-
+\begin{figure}
 \digraph[scale=0.5]{Poisson2Dsample} {
 	0	 [kernel=copy];
 	4	 [kernel=apply];
@@ -385,10 +456,11 @@ An Erdos GNM graph uses the Erdos-Renyi model of generating random graphs, which
 	11 -> 14	 [x=4];
 	11 -> 15	 [x=4];
 }
+\centering
+\caption{A Poisson2D graph with 16 vertices.}
+\end{figure}
 
-\subsection{SparceLU Graph}
-\vspace{20pt}
-
+\begin{figure}
 \digraph[scale=0.5]{sparselusample} {
 	0	 [kernel=lu];
 	1	 [kernel=fwd];
@@ -461,6 +533,9 @@ An Erdos GNM graph uses the Erdos-Renyi model of generating random graphs, which
 	16 -> 17	 [x=3,
 		y=3];
 }
+\centering
+\caption{A SparceLU graph with 18 vertices.}
+\end{figure}
 
 
 \end{document}  
